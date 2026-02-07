@@ -1,16 +1,30 @@
 class MobileColorCipher {
     constructor() {
+        this.mode = 'encode'; // 'encode' o 'decode'
         this.initElements();
         this.initEventListeners();
         this.initTouchEvents();
         this.pixelSize = 20;
         this.currentColorPairs = [];
+        this.isProcessing = false;
     }
 
     initElements() {
+        // Modo y switch
+        this.modeToggle = document.getElementById('modeToggle');
+        this.currentModeText = document.getElementById('currentMode');
+        this.inputTitle = document.getElementById('inputTitle');
+        this.outputTitle = document.getElementById('outputTitle');
+        this.processBtn = document.getElementById('processBtn');
+        this.processText = document.getElementById('processText');
+        this.modeHelp = document.getElementById('modeHelp');
+        this.instructionsTitle = document.getElementById('modeInstructions');
+        this.instructionsList = document.getElementById('instructionsList');
+        this.footerMode = document.getElementById('footerMode');
+        
         // Input y output
         this.textInput = document.getElementById('textInput');
-        this.hexOutput = document.getElementById('hexOutput');
+        this.outputDisplay = document.getElementById('outputDisplay');
         this.colorPalette = document.getElementById('colorPalette');
         this.htmlColors = document.getElementById('htmlColors');
         this.visualRepresentation = document.getElementById('visualRepresentation');
@@ -21,8 +35,6 @@ class MobileColorCipher {
         this.colorCount = document.getElementById('colorCount');
         
         // Botones principales
-        this.encryptBtn = document.getElementById('encryptBtn');
-        this.decryptBtn = document.getElementById('decryptBtn');
         this.clearBtn = document.getElementById('clearBtn');
         
         // Botones de utilidad
@@ -31,7 +43,7 @@ class MobileColorCipher {
         this.sampleBtn = document.getElementById('sampleBtn');
         
         // Botones de copiado
-        this.copyHexBtn = document.getElementById('copyHexBtn');
+        this.copyOutputBtn = document.getElementById('copyOutputBtn');
         this.copyPaletteBtn = document.getElementById('copyPaletteBtn');
         this.copyCodeBtn = document.getElementById('copyCodeBtn');
         
@@ -47,19 +59,34 @@ class MobileColorCipher {
         this.exportSimpleBtn = document.getElementById('exportSimpleBtn');
         this.cancelExportBtn = document.getElementById('cancelExportBtn');
         
+        // Modal de ayuda
+        this.helpModal = document.getElementById('helpModal');
+        this.closeHelpBtn = document.getElementById('closeHelpBtn');
+        
         // Toast
         this.toast = document.getElementById('toast');
     }
 
     initEventListeners() {
+        // Cambio de modo
+        this.modeToggle.addEventListener('change', () => this.toggleMode());
+        
+        // Ayuda del modo
+        this.modeHelp.addEventListener('click', () => this.showHelpModal());
+        this.closeHelpBtn.addEventListener('click', () => this.hideHelpModal());
+        this.helpModal.addEventListener('click', (e) => {
+            if (e.target === this.helpModal) this.hideHelpModal();
+        });
+
         // Contador de caracteres
         this.textInput.addEventListener('input', () => {
             this.charCount.textContent = this.textInput.value.length;
         });
 
-        // Botones principales
-        this.encryptBtn.addEventListener('click', () => this.encrypt());
-        this.decryptBtn.addEventListener('click', () => this.decrypt());
+        // Botón principal (procesar)
+        this.processBtn.addEventListener('click', () => this.process());
+
+        // Botón limpiar
         this.clearBtn.addEventListener('click', () => this.clearAll());
 
         // Botones de utilidad
@@ -68,7 +95,7 @@ class MobileColorCipher {
         this.sampleBtn.addEventListener('click', () => this.loadSample());
 
         // Botones de copiado
-        this.copyHexBtn.addEventListener('click', () => this.copyHex());
+        this.copyOutputBtn.addEventListener('click', () => this.copyOutput());
         this.copyPaletteBtn.addEventListener('click', () => this.copyPalette());
         this.copyCodeBtn.addEventListener('click', () => this.copyCode());
 
@@ -97,16 +124,14 @@ class MobileColorCipher {
         
         // Cerrar modal al tocar fuera
         this.exportModal.addEventListener('click', (e) => {
-            if (e.target === this.exportModal) {
-                this.hideExportModal();
-            }
+            if (e.target === this.exportModal) this.hideExportModal();
         });
 
-        // Enter para cifrar en dispositivos con teclado físico
+        // Enter para procesar en dispositivos con teclado físico
         this.textInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && e.ctrlKey) {
                 e.preventDefault();
-                this.encrypt();
+                this.process();
             }
         });
     }
@@ -132,6 +157,62 @@ class MobileColorCipher {
         }, { passive: true });
     }
 
+    // Funciones del modo
+    toggleMode() {
+        this.mode = this.modeToggle.checked ? 'decode' : 'encode';
+        this.updateUIForMode();
+        this.clearAll();
+        this.showToast(`Modo cambiado a: ${this.mode === 'encode' ? 'Codificación' : 'Decodificación'}`);
+    }
+
+    updateUIForMode() {
+        const isEncodeMode = this.mode === 'encode';
+        
+        // Actualizar textos
+        this.currentModeText.textContent = `Modo: ${isEncodeMode ? 'Codificación' : 'Decodificación'}`;
+        this.footerMode.textContent = isEncodeMode ? 'Codificación' : 'Decodificación';
+        
+        // Actualizar títulos
+        this.inputTitle.innerHTML = `<i class="fas fa-keyboard"></i> ${isEncodeMode ? 'Texto a Codificar' : 'Hexadecimal a Decodificar'}`;
+        this.outputTitle.innerHTML = `<i class="fas fa-code"></i> ${isEncodeMode ? 'Hexadecimal' : 'Texto Decodificado'}`;
+        
+        // Actualizar botón principal
+        this.processText.textContent = isEncodeMode ? 'Codificar' : 'Decodificar';
+        this.processBtn.innerHTML = `<i class="fas fa-sync-alt"></i> <span id="processText">${isEncodeMode ? 'Codificar' : 'Decodificar'}</span>`;
+        
+        // Actualizar placeholder del textarea
+        this.textInput.placeholder = isEncodeMode 
+            ? 'Escribe el texto que quieres codificar...' 
+            : 'Pega el código hexadecimal que quieres decodificar...';
+        
+        // Actualizar instrucciones
+        this.instructionsTitle.innerHTML = `<i class="fas fa-mobile-alt"></i> ${isEncodeMode ? 'Modo Codificación' : 'Modo Decodificación'}`;
+        
+        const encodeInstructions = `
+            <li>Escribe texto en el área superior</li>
+            <li>Toca "Codificar" para generar colores</li>
+            <li>Toca un color para copiar su código</li>
+            <li>Usa "Descargar Imagen" para guardar</li>
+        `;
+        
+        const decodeInstructions = `
+            <li>Pega código hexadecimal en el área superior</li>
+            <li>Toca "Decodificar" para obtener texto</li>
+            <li>El texto aparecerá en la sección inferior</li>
+            <li>También verás los colores correspondientes</li>
+        `;
+        
+        this.instructionsList.innerHTML = isEncodeMode ? encodeInstructions : decodeInstructions;
+    }
+
+    showHelpModal() {
+        this.helpModal.style.display = 'flex';
+    }
+
+    hideHelpModal() {
+        this.helpModal.style.display = 'none';
+    }
+
     // Funciones principales
     textToHex(text) {
         let hex = '';
@@ -143,6 +224,15 @@ class MobileColorCipher {
     }
 
     hexToText(hex) {
+        // Validar que el hexadecimal sea válido
+        if (!/^[0-9a-fA-F]+$/.test(hex)) {
+            throw new Error('El código hexadecimal contiene caracteres inválidos');
+        }
+        
+        if (hex.length % 2 !== 0) {
+            throw new Error('La longitud del hexadecimal debe ser múltiplo de 2');
+        }
+        
         let text = '';
         for (let i = 0; i < hex.length; i += 2) {
             const hexChar = hex.substr(i, 2);
@@ -163,82 +253,127 @@ class MobileColorCipher {
         return pairs;
     }
 
-    async encrypt() {
-        const text = this.textInput.value.trim();
+    validateInput(input, mode) {
+        if (!input.trim()) {
+            throw new Error('Por favor, ingresa algún contenido');
+        }
+
+        if (mode === 'decode') {
+            // Validar hexadecimal para decodificación
+            const cleanHex = input.replace(/\s+/g, '').replace(/^#/, '');
+            
+            if (!/^[0-9a-fA-F]+$/.test(cleanHex)) {
+                throw new Error('El código hexadecimal contiene caracteres inválidos. Solo se permiten: 0-9, A-F, a-f');
+            }
+            
+            if (cleanHex.length % 2 !== 0) {
+                throw new Error(`La longitud del hexadecimal (${cleanHex.length}) debe ser múltiplo de 2.`);
+            }
+            
+            return cleanHex;
+        }
         
-        if (!text) {
-            this.showToast('⚠️ Escribe un mensaje primero');
-            this.textInput.focus();
-            return;
+        // Validación para codificación (solo longitud)
+        if (input.length > 1000) {
+            throw new Error('El texto no puede exceder los 1000 caracteres');
         }
+        
+        return input;
+    }
 
-        if (text.length > 500) {
-            this.showToast('⚠️ Máximo 500 caracteres');
-            return;
-        }
-
+    async process() {
+        if (this.isProcessing) return;
+        
+        const input = this.textInput.value.trim();
+        
         try {
-            // Mostrar carga
-            this.showToast('🔐 Cifrando...');
-
-            // Convertir a hexadecimal
-            const hex = this.textToHex(text);
-            this.hexOutput.textContent = hex;
-
-            // Generar colores
-            const colorPairs = this.hexToColorPairs(hex);
-            this.currentColorPairs = colorPairs;
-            this.colorCount.textContent = `${colorPairs.length} colores generados`;
-
-            // Crear paleta de colores
-            this.createColorPalette(colorPairs);
-
-            // Crear vista previa
-            this.createVisualRepresentation(colorPairs);
-
-            // Generar código HTML
-            this.generateHTMLCode(colorPairs);
-
-            // Mostrar información
-            this.displayInfo(text, hex, colorPairs);
-
-            this.showToast('✅ Mensaje cifrado correctamente');
+            this.isProcessing = true;
+            this.processBtn.disabled = true;
+            this.processBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
+            
+            const validatedInput = this.validateInput(input, this.mode);
+            
+            if (this.mode === 'encode') {
+                await this.encodeProcess(validatedInput);
+            } else {
+                await this.decodeProcess(validatedInput);
+            }
+            
         } catch (error) {
-            this.showToast('❌ Error al cifrar');
+            this.showToast(`❌ ${error.message}`);
             console.error(error);
+        } finally {
+            this.isProcessing = false;
+            this.processBtn.disabled = false;
+            this.updateUIForMode();
         }
     }
 
-    decrypt() {
-        const hex = this.hexOutput.textContent;
+    async encodeProcess(text) {
+        this.showToast('🔐 Codificando...');
         
-        if (!hex) {
-            this.showToast('⚠️ No hay datos hexadecimales');
-            return;
-        }
+        // Convertir a hexadecimal
+        const hex = this.textToHex(text);
+        this.outputDisplay.textContent = hex;
+        
+        // Generar colores
+        const colorPairs = this.hexToColorPairs(hex);
+        this.currentColorPairs = colorPairs;
+        this.colorCount.textContent = `${colorPairs.length} colores generados`;
+        
+        // Crear paleta de colores
+        this.createColorPalette(colorPairs);
+        
+        // Crear vista previa
+        this.createVisualRepresentation(colorPairs);
+        
+        // Generar código HTML
+        this.generateHTMLCode(colorPairs);
+        
+        // Mostrar información
+        this.displayInfo(text, hex, colorPairs, 'encode');
+        
+        this.showToast('✅ Texto codificado correctamente');
+    }
 
-        try {
-            const text = this.hexToText(hex);
-            this.textInput.value = text;
-            this.charCount.textContent = text.length;
-            this.showToast('🔓 Texto descifrado');
-        } catch (error) {
-            this.showToast('❌ Error: hexadecimal inválido');
-        }
+    async decodeProcess(hex) {
+        this.showToast('🔓 Decodificando...');
+        
+        // Convertir hexadecimal a texto
+        const text = this.hexToText(hex);
+        this.outputDisplay.textContent = text;
+        
+        // Generar colores a partir del hexadecimal
+        const colorPairs = this.hexToColorPairs(hex);
+        this.currentColorPairs = colorPairs;
+        this.colorCount.textContent = `${colorPairs.length} colores en el código`;
+        
+        // Crear paleta de colores
+        this.createColorPalette(colorPairs);
+        
+        // Crear vista previa
+        this.createVisualRepresentation(colorPairs);
+        
+        // Generar código HTML
+        this.generateHTMLCode(colorPairs);
+        
+        // Mostrar información
+        this.displayInfo(text, hex, colorPairs, 'decode');
+        
+        this.showToast('✅ Hexadecimal decodificado correctamente');
     }
 
     clearAll() {
         this.textInput.value = '';
-        this.hexOutput.textContent = '';
+        this.outputDisplay.textContent = '';
         this.colorPalette.innerHTML = '';
         this.htmlColors.textContent = '';
         this.visualRepresentation.innerHTML = '';
         this.infoDisplay.innerHTML = '';
         this.charCount.textContent = '0';
-        this.colorCount.textContent = '0 colores generados';
+        this.colorCount.textContent = `0 colores ${this.mode === 'encode' ? 'generados' : 'encontrados'}`;
         this.pixelSize = 20;
         this.currentColorPairs = [];
-        this.showToast('🗑️ Todo limpiado');
     }
 
     // Funciones de utilidad móvil
@@ -253,7 +388,7 @@ class MobileColorCipher {
             const text = await navigator.clipboard.readText();
             this.textInput.value = text;
             this.charCount.textContent = text.length;
-            this.showToast('📋 Texto pegado');
+            this.showToast('📋 Contenido pegado');
         } catch (error) {
             this.showToast('👆 Use el menú contextual para pegar');
             this.textInput.focus();
@@ -263,31 +398,46 @@ class MobileColorCipher {
     async copyToClipboard() {
         const text = this.textInput.value;
         if (!text) {
-            this.showToast('⚠️ No hay texto para copiar');
+            this.showToast('⚠️ No hay contenido para copiar');
             return;
         }
 
         try {
             await navigator.clipboard.writeText(text);
-            this.showToast('📋 Texto copiado');
+            this.showToast('📋 Contenido copiado');
         } catch (error) {
             this.showToast('❌ Error al copiar');
         }
     }
 
     loadSample() {
-        const samples = [
-            "¡Hola Mundo! 🌍",
-            "El cifrado visual es increíble",
-            "Texto a colores hexadecimales",
-            "Prueba este sistema móvil",
-            "1234567890 ABCDEF"
-        ];
-        
-        const randomSample = samples[Math.floor(Math.random() * samples.length)];
-        this.textInput.value = randomSample;
-        this.charCount.textContent = randomSample.length;
-        this.showToast('✨ Ejemplo cargado');
+        if (this.mode === 'encode') {
+            const encodeSamples = [
+                "¡Hola Mundo! 🌍",
+                "El cifrado visual es increíble",
+                "Texto a colores hexadecimales",
+                "Prueba este sistema móvil",
+                "1234567890 ABCDEF"
+            ];
+            
+            const randomSample = encodeSamples[Math.floor(Math.random() * encodeSamples.length)];
+            this.textInput.value = randomSample;
+            this.charCount.textContent = randomSample.length;
+            this.showToast('✨ Ejemplo de texto cargado');
+        } else {
+            const decodeSamples = [
+                "486f6c61204d756e646f21", // "Hola Mundo!"
+                "546578746f20646520656a656d706c6f", // "Texto de ejemplo"
+                "6369667261646f2068657861646563696d616c", // "cifrado hexadecimal"
+                "707275656261206465636f64696669636163696f6e", // "prueba decodificacion"
+                "31323334353637383930" // "1234567890"
+            ];
+            
+            const randomSample = decodeSamples[Math.floor(Math.random() * decodeSamples.length)];
+            this.textInput.value = randomSample;
+            this.charCount.textContent = randomSample.length;
+            this.showToast('✨ Ejemplo hexadecimal cargado');
+        }
     }
 
     // Funciones de visualización
@@ -369,44 +519,67 @@ class MobileColorCipher {
         this.htmlColors.textContent = code;
     }
 
-    displayInfo(text, hex, colorPairs) {
-        const charCount = text.length;
+    displayInfo(primaryText, hex, colorPairs, operation) {
+        const charCount = primaryText.length;
         const hexLength = hex.length;
         const colorCount = colorPairs.length;
         
-        this.infoDisplay.innerHTML = `
-            <div class="info-item">
-                <strong>Caracteres:</strong> ${charCount}
-            </div>
-            <div class="info-item">
-                <strong>Hex longitud:</strong> ${hexLength}
-            </div>
-            <div class="info-item">
-                <strong>Colores:</strong> ${colorCount}
-            </div>
-            <div class="info-item">
-                <strong>Relación:</strong> ${(charCount/colorCount).toFixed(1)}:1
-            </div>
-            <div class="info-item">
-                <strong>Bytes:</strong> ${Math.ceil(hexLength/2)}
-            </div>
-            <div class="info-item">
-                <strong>Tamaño píxel:</strong> ${this.pixelSize}px
-            </div>
-        `;
+        if (operation === 'encode') {
+            this.infoDisplay.innerHTML = `
+                <div class="info-item">
+                    <strong>Texto original:</strong> ${charCount} caracteres
+                </div>
+                <div class="info-item">
+                    <strong>Hexadecimal:</strong> ${hexLength} caracteres
+                </div>
+                <div class="info-item">
+                    <strong>Colores generados:</strong> ${colorCount}
+                </div>
+                <div class="info-item">
+                    <strong>Relación:</strong> ${(charCount/colorCount).toFixed(2)}:1
+                </div>
+                <div class="info-item">
+                    <strong>Bytes:</strong> ${Math.ceil(hexLength/2)}
+                </div>
+                <div class="info-item">
+                    <strong>Tamaño píxel:</strong> ${this.pixelSize}px
+                </div>
+            `;
+        } else {
+            this.infoDisplay.innerHTML = `
+                <div class="info-item">
+                    <strong>Texto decodificado:</strong> ${charCount} caracteres
+                </div>
+                <div class="info-item">
+                    <strong>Hexadecimal:</strong> ${hexLength} caracteres
+                </div>
+                <div class="info-item">
+                    <strong>Colores encontrados:</strong> ${colorCount}
+                </div>
+                <div class="info-item">
+                    <strong>Bytes:</strong> ${Math.ceil(hexLength/2)}
+                </div>
+                <div class="info-item">
+                    <strong>Longitud hex:</strong> ${hexLength}
+                </div>
+                <div class="info-item">
+                    <strong>Validación:</strong> ✓ Correcta
+                </div>
+            `;
+        }
     }
 
     // Funciones de copiado
-    async copyHex() {
-        const hex = this.hexOutput.textContent;
-        if (!hex) {
-            this.showToast('⚠️ No hay hexadecimal');
+    async copyOutput() {
+        const output = this.outputDisplay.textContent;
+        if (!output) {
+            this.showToast('⚠️ No hay contenido');
             return;
         }
 
         try {
-            await navigator.clipboard.writeText(hex);
-            this.showToast('📋 Hexadecimal copiado');
+            await navigator.clipboard.writeText(output);
+            this.showToast(`📋 ${this.mode === 'encode' ? 'Hexadecimal' : 'Texto'} copiado`);
         } catch (error) {
             this.showToast('❌ Error al copiar');
         }
@@ -484,7 +657,7 @@ class MobileColorCipher {
     // Funciones de exportación de imagen
     showExportModal() {
         if (!this.currentColorPairs || this.currentColorPairs.length === 0) {
-            this.showToast('⚠️ Primero genera colores con "Cifrar"');
+            this.showToast('⚠️ Primero procesa algún contenido');
             return;
         }
         this.exportModal.style.display = 'flex';
@@ -511,7 +684,8 @@ class MobileColorCipher {
                     throw new Error('No se pudo crear la imagen');
                 }
                 
-                this.downloadBlob(blob, `cifrado-visual-${Date.now()}.${extension}`);
+                const modeText = this.mode === 'encode' ? 'codificacion' : 'decodificacion';
+                this.downloadBlob(blob, `cifrado-${modeText}-${Date.now()}.${extension}`);
                 this.showToast(`📸 Imagen ${extension.toUpperCase()} descargada`);
             }, mimeType, quality);
             
@@ -531,7 +705,7 @@ class MobileColorCipher {
         
         // Dimensiones
         const canvasWidth = columns * (pixelSize + margin) + padding * 2;
-        const canvasHeight = padding * 2 + rows * (pixelSize + margin) + 120; // +120 para título y info
+        const canvasHeight = padding * 2 + rows * (pixelSize + margin) + 120;
         
         const canvas = document.createElement('canvas');
         canvas.width = canvasWidth;
@@ -553,18 +727,30 @@ class MobileColorCipher {
         ctx.fillStyle = '#1a1a2e';
         ctx.font = 'bold 24px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText('🎨 PALETA DE COLORES CIFRADA', canvasWidth / 2, 60);
+        ctx.fillText(
+            this.mode === 'encode' ? '🎨 PALETA DE COLORES CIFRADA' : '🔓 PALETA DECODIFICADA', 
+            canvasWidth / 2, 
+            60
+        );
         
         // Información
         ctx.fillStyle = '#4361ee';
         ctx.font = '14px Arial';
-        const originalText = this.textInput.value.substring(0, 30);
-        ctx.fillText(`"${originalText}${this.textInput.value.length > 30 ? '...' : ''}"`, canvasWidth / 2, 85);
+        
+        const displayText = this.mode === 'encode' 
+            ? this.textInput.value.substring(0, 30)
+            : this.outputDisplay.textContent.substring(0, 30);
+            
+        ctx.fillText(
+            `"${displayText}${displayText.length >= 30 ? '...' : ''}"`, 
+            canvasWidth / 2, 
+            85
+        );
         
         ctx.fillStyle = '#6c757d';
         ctx.font = '12px Arial';
         ctx.fillText(
-            `${colors.length} colores | ${this.textInput.value.length} caracteres`,
+            `${colors.length} colores | Modo: ${this.mode === 'encode' ? 'Codificación' : 'Decodificación'}`,
             canvasWidth / 2,
             105
         );
@@ -619,7 +805,7 @@ class MobileColorCipher {
 
     saveAsImageSimple() {
         if (!this.currentColorPairs || this.currentColorPairs.length === 0) {
-            this.showToast('⚠️ Primero genera colores con "Cifrar"');
+            this.showToast('⚠️ No hay colores para exportar');
             return;
         }
 
@@ -645,7 +831,11 @@ class MobileColorCipher {
             ctx.fillStyle = '#333333';
             ctx.font = 'bold 16px Arial';
             ctx.textAlign = 'center';
-            ctx.fillText('CIFRADO VISUAL', canvas.width / 2, 25);
+            ctx.fillText(
+                this.mode === 'encode' ? 'CIFRADO VISUAL' : 'DECODIFICACIÓN', 
+                canvas.width / 2, 
+                25
+            );
             
             // Dibujar colores
             colors.forEach((color, index) => {
@@ -668,14 +858,15 @@ class MobileColorCipher {
             ctx.fillStyle = '#666666';
             ctx.font = '12px Arial';
             ctx.fillText(
-                `${colors.length} colores generados`,
+                `${colors.length} colores - ${this.mode === 'encode' ? 'Codificación' : 'Decodificación'}`,
                 canvas.width / 2,
                 canvas.height - 10
             );
             
             // Descargar
             const dataUrl = canvas.toDataURL('image/png');
-            this.downloadDataUrl(dataUrl, `cifrado-simple-${Date.now()}.png`);
+            const modeText = this.mode === 'encode' ? 'codificacion' : 'decodificacion';
+            this.downloadDataUrl(dataUrl, `cifrado-${modeText}-simple-${Date.now()}.png`);
             this.showToast('📸 Imagen simple descargada');
             
         } catch (error) {
@@ -769,10 +960,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const app = new MobileColorCipher();
     window.app = app;
     
-    // Precargar un ejemplo
+    // Precargar un ejemplo basado en el modo inicial
     setTimeout(() => {
         if (!app.textInput.value) {
-            app.textInput.value = "¡Hola Mundo! Prueba el cifrado visual 📱";
+            if (app.mode === 'encode') {
+                app.textInput.value = "¡Hola Mundo! Prueba el cifrado visual 📱";
+            } else {
+                app.textInput.value = "486f6c61204d756e646f21";
+            }
             app.charCount.textContent = app.textInput.value.length;
         }
     }, 500);
